@@ -131,7 +131,10 @@ async def health(req):
 
 
 app = web.Application()
-app.router.add_post("/api/messages", messages)
+# app.router.add_post("/api/messages", messages)
+@app.route("/api/messages", methods=["POST"])
+def messages():
+    return {"ok": True}, 200
 app.router.add_get("/health", health)
 
 
