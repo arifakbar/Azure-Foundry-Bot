@@ -14,7 +14,7 @@ WORKFLOW_NAME = os.environ["WORKFLOW_NAME"]
 
 @app.route("/health", methods=["GET"])
 def health():
-    return "OK", 200
+    return "V-2", 200
 
 
 @app.route("/api/messages", methods=["POST"])
