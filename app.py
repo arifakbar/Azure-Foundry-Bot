@@ -1,98 +1,139 @@
-from flask import Flask, request, jsonify
+import os
+import json
+import asyncio
+
+from aiohttp import web
+
+from botbuilder.core import (
+    BotFrameworkAdapter,
+    BotFrameworkAdapterSettings,
+    TurnContext,
+    ActivityHandler
+)
+from botbuilder.schema import Activity
 
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
 
-import os
-import json
 
-app = Flask(__name__)
-
+# ======================
+# ENV VARIABLES
+# ======================
 FOUNDRY_ENDPOINT = os.environ["FOUNDRY_ENDPOINT"]
 WORKFLOW_NAME = os.environ["WORKFLOW_NAME"]
 
-
-@app.route("/health", methods=["GET"])
-def health():
-    return "V-2", 200
+MICROSOFT_APP_ID = os.environ["MicrosoftAppId"]
+MICROSOFT_APP_PASSWORD = os.environ["MicrosoftAppPassword"]
 
 
-@app.route("/api/messages", methods=["POST"])
-def messages():
+# ======================
+# SIMPLE IN-MEMORY STATE
+# (Replace with Redis/Cosmos later)
+# ======================
+conversation_map = {}
 
-    try:
 
-        data = request.get_json(silent=True) or {}
+# ======================
+# BOT LOGIC
+# ======================
+class FoundryBot(ActivityHandler):
+
+    async def on_message_activity(self, turn_context: TurnContext):
+
+        user_text = turn_context.activity.text or ""
+        bot_conv_id = turn_context.activity.conversation.id
 
         print("========== BOT REQUEST ==========")
-        print(json.dumps(data, indent=2))
+        print(f"Bot Conversation ID: {bot_conv_id}")
+        print(f"User Message: {user_text}")
         print("=================================")
 
-        user_message = data.get("text", "").strip()
+        # ---- Map Bot conversation → Foundry conversation ----
+        if bot_conv_id in conversation_map:
+            foundry_conv_id = conversation_map[bot_conv_id]
+        else:
+            project_client = AIProjectClient(
+                endpoint=FOUNDRY_ENDPOINT,
+                credential=DefaultAzureCredential()
+            )
 
-        if not user_message:
-            return jsonify({
-                "error": "text field is required"
-            }), 400
+            openai_client = project_client.get_openai_client()
+            foundry_conv_id = openai_client.conversations.create().id
+            conversation_map[bot_conv_id] = foundry_conv_id
 
+        # ---- Call Foundry Workflow ----
         project_client = AIProjectClient(
             endpoint=FOUNDRY_ENDPOINT,
             credential=DefaultAzureCredential()
         )
 
-        final_response = ""
-
         with project_client:
 
             openai_client = project_client.get_openai_client()
 
-            conversation = openai_client.conversations.create()
+            stream = openai_client.responses.create(
+                conversation=foundry_conv_id,
+                extra_body={
+                    "agent_reference": {
+                        "name": WORKFLOW_NAME,
+                        "type": "agent_reference"
+                    }
+                },
+                input=user_text,
+                stream=True
+            )
 
-            try:
+            final_response = ""
 
-                stream = openai_client.responses.create(
-                    conversation=conversation.id,
-                    extra_body={
-                        "agent_reference": {
-                            "name": WORKFLOW_NAME,
-                            "type": "agent_reference"
-                        }
-                    },
-                    input=user_message,
-                    stream=True
-                )
+            for event in stream:
+                if hasattr(event, "text"):
+                    final_response += event.text
+                if hasattr(event, "delta"):
+                    final_response += event.delta
 
-                for event in stream:
+        # ---- Reply to Bot ----
+        await turn_context.send_activity(final_response or "No response from workflow")
 
-                    event_type = getattr(event, "type", "")
 
-                    if event_type == "response.output_text.done":
-                        final_response = event.text
+# ======================
+# BOT ADAPTER
+# ======================
+adapter_settings = BotFrameworkAdapterSettings(
+    app_id=MICROSOFT_APP_ID,
+    app_password=MICROSOFT_APP_PASSWORD
+)
 
-                return jsonify({
-                    "response": final_response
-                })
+adapter = BotFrameworkAdapter(adapter_settings)
+bot = FoundryBot()
 
-            finally:
 
-                try:
-                    openai_client.conversations.delete(
-                        conversation_id=conversation.id
-                    )
-                except Exception as cleanup_error:
-                    print(f"Conversation cleanup failed: {cleanup_error}")
+# ======================
+# HTTP SERVER
+# ======================
+async def messages(req: web.Request) -> web.Response:
 
-    except Exception as ex:
+    body = await req.json()
+    activity = Activity().deserialize(body)
 
-        print(f"ERROR: {str(ex)}")
+    auth_header = req.headers.get("Authorization", "")
 
-        return jsonify({
-            "error": str(ex)
-        }), 500
+    response = await adapter.process_activity(
+        activity,
+        auth_header,
+        bot.on_turn
+    )
+
+    return web.Response(status=201)
+
+
+async def health(req):
+    return web.Response(text="OK")
+
+
+app = web.Application()
+app.router.add_post("/api/messages", messages)
+app.router.add_get("/health", health)
 
 
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=8000
-    )
+    web.run_app(app, host="0.0.0.0", port=8000)

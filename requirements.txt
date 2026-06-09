@@ -1,4 +1,7 @@
-flask
+aiohttp
+botbuilder-core
+botbuilder-schema
+botbuilder-integration-aiohttp
 gunicorn
 azure-ai-projects
 azure-identity
