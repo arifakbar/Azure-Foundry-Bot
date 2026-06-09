@@ -1,7 +1,4 @@
-aiohttp
-botbuilder-core
-botbuilder-schema
-botbuilder-integration-aiohttp
-gunicorn
+fastapi
+uvicorn
 azure-ai-projects
 azure-identity
