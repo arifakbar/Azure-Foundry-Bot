@@ -4,6 +4,7 @@ from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
 
 import os
+import json
 
 app = Flask(__name__)
 
@@ -22,6 +23,11 @@ def messages():
     try:
 
         data = request.get_json(silent=True) or {}
+
+        print("========== BOT REQUEST ==========")
+        print(json.dumps(data, indent=2))
+        print("=================================")
+
         user_message = data.get("text", "").strip()
 
         if not user_message:
