@@ -36,11 +36,13 @@ MICROSOFT_APP_PASSWORD = os.getenv(
     ""
 )
 
-print("APP ID:", MICROSOFT_APP_ID)
-print("PASSWORD:", bool(MICROSOFT_APP_PASSWORD))
-print("APP TYPE:", os.getenv("MicrosoftAppType"))
-print("TENANT ID:", os.getenv("MicrosoftAppTenantId"))
+MICROSOFT_APP_TYPE = os.getenv(
+    "MicrosoftAppType"
+)
 
+MICROSOFT_APP_TENANT_ID = os.getenv(
+    "MicrosoftAppTenantId"
+)
 
 print("")
 print("====================================")
@@ -51,6 +53,14 @@ print(
     "PASSWORD PRESENT =",
     bool(MICROSOFT_APP_PASSWORD)
 )
+print(
+    "APP TYPE =",
+    MICROSOFT_APP_TYPE
+)
+print(
+    "TENANT ID =",
+    MICROSOFT_APP_TENANT_ID
+)
 print("====================================")
 print("")
 
@@ -60,6 +70,12 @@ settings = BotFrameworkAdapterSettings(
     app_id=MICROSOFT_APP_ID,
     app_password=MICROSOFT_APP_PASSWORD
 )
+
+print("")
+print("========== ADAPTER SETTINGS ==========")
+print(settings.__dict__)
+print("======================================")
+print("")
 
 adapter = BotFrameworkAdapter(
     settings
@@ -112,32 +128,99 @@ class DebugBot(ActivityHandler):
 
             print("")
             print("========== SEND ==========")
+
             print(
                 "About to send:",
                 response_text
             )
+
+            print(
+                "Channel:",
+                turn_context.activity.channel_id
+            )
+
+            print(
+                "Service URL:",
+                turn_context.activity.service_url
+            )
+
+            print(
+                "Conversation:",
+                turn_context.activity.conversation.id
+            )
+
+            print(
+                "APP ID:",
+                MICROSOFT_APP_ID
+            )
+
+            print(
+                "PASSWORD PRESENT:",
+                bool(MICROSOFT_APP_PASSWORD)
+            )
+
             print("==========================")
             print("")
 
             try:
 
-                await turn_context.send_activity(
+                result = await turn_context.send_activity(
                     response_text
                 )
 
                 print("")
                 print("SEND SUCCESS")
+                print(result)
                 print("")
 
             except Exception as send_error:
 
                 print("")
                 print("SEND FAILED")
-                print(type(ex))
-                print(str(ex))
-                print(str(send_error))
-                print(traceback.format_exc())
                 print("")
+
+                print(
+                    "ERROR TYPE:"
+                )
+                print(
+                    type(send_error)
+                )
+
+                print("")
+                print(
+                    "ERROR MESSAGE:"
+                )
+                print(
+                    str(send_error)
+                )
+
+                print("")
+                print(
+                    "TRACEBACK:"
+                )
+                print(
+                    traceback.format_exc()
+                )
+
+                print("")
+
+                if hasattr(
+                    send_error,
+                    "response"
+                ):
+
+                    try:
+
+                        print(
+                            "HTTP STATUS:"
+                        )
+
+                        print(
+                            send_error.response.status_code
+                        )
+
+                    except Exception:
+                        pass
 
                 raise
 
@@ -167,10 +250,19 @@ async def health():
 async def debug():
 
     return {
-        "app_id": MICROSOFT_APP_ID,
-        "password_present": bool(
+        "app_id":
+        MICROSOFT_APP_ID,
+
+        "password_present":
+        bool(
             MICROSOFT_APP_PASSWORD
-        )
+        ),
+
+        "app_type":
+        MICROSOFT_APP_TYPE,
+
+        "tenant_id":
+        MICROSOFT_APP_TENANT_ID
     }
 
 
@@ -203,6 +295,11 @@ async def messages(
             bool(auth_header)
         )
 
+        print(
+            "AUTH HEADER LENGTH:",
+            len(auth_header)
+        )
+
         response = (
             await adapter.process_activity(
                 activity,
@@ -212,7 +309,16 @@ async def messages(
         )
 
         print("")
-        print("PROCESS_ACTIVITY COMPLETE")
+        print(
+            "PROCESS_ACTIVITY COMPLETE"
+        )
+
+        print(
+            "RESPONSE OBJECT:"
+        )
+
+        print(response)
+
         print("")
 
         if response:
