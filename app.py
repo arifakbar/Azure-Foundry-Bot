@@ -179,6 +179,26 @@ class DebugBot(ActivityHandler):
                 print("SEND FAILED")
                 print("")
 
+                print("")
+                print("===== ACTIVITY =====")
+                print(turn_context.activity)
+                print("====================")
+
+                print("")
+                print("===== RECIPIENT =====")
+                print(turn_context.activity.recipient)
+                print("====================")
+
+                print("")
+                print("===== FROM =====")
+                print(turn_context.activity.from_property)
+                print("====================")
+
+                print("")
+                print("===== SERVICE URL =====")
+                print(turn_context.activity.service_url)
+                print("=======================")
+
                 print(
                     "ERROR TYPE:"
                 )
@@ -351,3 +371,13 @@ async def messages(
                 "error": str(ex)
             }
         )
+    
+@app.get("/adapter")
+async def adapter_debug():
+
+    return {
+        "app_id": MICROSOFT_APP_ID,
+        "app_type": MICROSOFT_APP_TYPE,
+        "tenant_id": MICROSOFT_APP_TENANT_ID,
+        "adapter_type": str(type(adapter))
+    }
