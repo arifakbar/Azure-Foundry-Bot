@@ -195,3 +195,15 @@ async def reset(request: Request):
                 "error": str(ex)
             }
         )
+    
+@app.post("/api/messages")
+async def messages(request: Request):
+
+    body = await request.json()
+
+    print(body)
+
+    return {
+        "type": "message",
+        "text": "Hello from bot"
+    }

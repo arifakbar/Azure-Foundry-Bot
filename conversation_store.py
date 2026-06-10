@@ -28,6 +28,12 @@ table_client = table_service.get_table_client(
     TABLE_NAME
 )
 
+# But for a production design, I prefer:
+# Create table manually once
+# Disable initialize_table()
+# Keep Storage Table Data Contributor
+# because your app should not need permission to create storage resources every time it starts.
+
 
 def initialize_table():
 
