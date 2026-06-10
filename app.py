@@ -36,6 +36,12 @@ MICROSOFT_APP_PASSWORD = os.getenv(
     ""
 )
 
+print("APP ID:", MICROSOFT_APP_ID)
+print("PASSWORD:", bool(MICROSOFT_APP_PASSWORD))
+print("APP TYPE:", os.getenv("MicrosoftAppType"))
+print("TENANT ID:", os.getenv("MicrosoftAppTenantId"))
+
+
 print("")
 print("====================================")
 print("BOT STARTUP")
@@ -127,6 +133,8 @@ class DebugBot(ActivityHandler):
 
                 print("")
                 print("SEND FAILED")
+                print(type(ex))
+                print(str(ex))
                 print(str(send_error))
                 print(traceback.format_exc())
                 print("")
