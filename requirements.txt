@@ -2,3 +2,4 @@ fastapi
 uvicorn
 azure-ai-projects
 azure-identity
+dotenv
