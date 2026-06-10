@@ -1,5 +1,8 @@
 fastapi
 uvicorn
-azure-ai-projects
+botbuilder-core
+botbuilder-integration-aiohttp
+botbuilder-schema
+azure-ai-projects==2.2.0
 azure-identity
-dotenv
+python-dotenv
