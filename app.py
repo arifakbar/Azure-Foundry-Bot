@@ -3,38 +3,49 @@ import traceback
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse
-
-from azure.identity import DefaultAzureCredential
-from azure.ai.projects import AIProjectClient
-
-from botbuilder.core import (
-    BotFrameworkAdapter,
-    BotFrameworkAdapterSettings,
-    ActivityHandler,
-    TurnContext
+from fastapi import (
+    FastAPI,
+    Request
 )
 
-from botbuilder.schema import Activity
+from fastapi.responses import (
+    JSONResponse
+)
 
+from azure.identity import (
+    DefaultAzureCredential
+)
+
+from azure.ai.projects import (
+    AIProjectClient
+)
+
+from conversation_store import (
+    initialize_table,
+    get_conversation_id,
+    save_conversation_id,
+    delete_conversation_id
+)
 
 load_dotenv()
 
-FOUNDRY_ENDPOINT = os.getenv("FOUNDRY_ENDPOINT")
-WORKFLOW_NAME = os.getenv("WORKFLOW_NAME")
+FOUNDRY_ENDPOINT = os.getenv(
+    "FOUNDRY_ENDPOINT"
+)
 
-MICROSOFT_APP_ID = os.getenv("MicrosoftAppId", "")
-MICROSOFT_APP_PASSWORD = os.getenv("MicrosoftAppPassword", "")
+WORKFLOW_NAME = os.getenv(
+    "WORKFLOW_NAME"
+)
 
 app = FastAPI()
 
+initialize_table()
 
-# --------------------------------------------------
-# Foundry helper
-# --------------------------------------------------
 
-def invoke_workflow(user_message: str) -> str:
+def invoke_workflow(
+    user_id: str,
+    user_message: str
+):
 
     project_client = AIProjectClient(
         endpoint=FOUNDRY_ENDPOINT,
@@ -45,61 +56,67 @@ def invoke_workflow(user_message: str) -> str:
 
     with project_client:
 
-        openai_client = project_client.get_openai_client()
+        openai_client = (
+            project_client.get_openai_client()
+        )
 
-        conversation = openai_client.conversations.create()
+        conversation_id = (
+            get_conversation_id(user_id)
+        )
 
-        print(f"Conversation created: {conversation.id}")
+        if conversation_id:
 
-        try:
-
-            stream = openai_client.responses.create(
-                conversation=conversation.id,
-                extra_body={
-                    "agent_reference": {
-                        "name": WORKFLOW_NAME,
-                        "type": "agent_reference"
-                    }
-                },
-                input=user_message,
-                stream=True
+            print(
+                f"Reusing conversation: {conversation_id}"
             )
 
-            for event in stream:
+        else:
 
-                event_type = getattr(event, "type", "")
+            conversation = (
+                openai_client.conversations.create()
+            )
 
-                if event_type == "response.output_text.done":
-                    final_response = event.text
+            conversation_id = (
+                conversation.id
+            )
 
-            print("========== RESPONSE ==========")
-            print(final_response)
-            print("==============================")
+            save_conversation_id(
+                user_id,
+                conversation_id
+            )
 
-            return final_response
+            print(
+                f"Created conversation: {conversation_id}"
+            )
 
-        finally:
+        stream = openai_client.responses.create(
+            conversation=conversation_id,
+            extra_body={
+                "agent_reference": {
+                    "name": WORKFLOW_NAME,
+                    "type": "agent_reference"
+                }
+            },
+            input=user_message,
+            stream=True
+        )
 
-            try:
+        for event in stream:
 
-                openai_client.conversations.delete(
-                    conversation_id=conversation.id
-                )
+            event_type = getattr(
+                event,
+                "type",
+                ""
+            )
 
-                print(
-                    f"Conversation deleted: {conversation.id}"
-                )
+            if (
+                event_type
+                == "response.output_text.done"
+            ):
+                final_response = event.text
 
-            except Exception as cleanup_error:
+        return final_response
 
-                print(
-                    f"Cleanup failed: {cleanup_error}"
-                )
-
-
-# --------------------------------------------------
-# Health
-# --------------------------------------------------
 
 @app.get("/health")
 async def health():
@@ -110,10 +127,6 @@ async def health():
     }
 
 
-# --------------------------------------------------
-# EASY TEST ENDPOINT
-# --------------------------------------------------
-
 @app.post("/api/test")
 async def test(request: Request):
 
@@ -121,13 +134,20 @@ async def test(request: Request):
 
         body = await request.json()
 
-        print("========== REQUEST ==========")
-        print(body)
-        print("=============================")
+        user_id = body.get(
+            "user_id",
+            "default-user"
+        )
 
-        user_message = body.get("text", "")
+        user_message = body.get(
+            "text",
+            ""
+        )
 
-        response = invoke_workflow(user_message)
+        response = invoke_workflow(
+            user_id,
+            user_message
+        )
 
         return {
             "response": response
@@ -135,7 +155,9 @@ async def test(request: Request):
 
     except Exception as ex:
 
-        print(traceback.format_exc())
+        print(
+            traceback.format_exc()
+        )
 
         return JSONResponse(
             status_code=500,
@@ -145,78 +167,31 @@ async def test(request: Request):
         )
 
 
-# --------------------------------------------------
-# BOT FRAMEWORK
-# --------------------------------------------------
+@app.post("/api/reset")
+async def reset(request: Request):
 
-settings = BotFrameworkAdapterSettings(
-    MICROSOFT_APP_ID,
-    MICROSOFT_APP_PASSWORD
-)
+    try:
 
-adapter = BotFrameworkAdapter(settings)
+        body = await request.json()
 
-
-class FoundryBot(ActivityHandler):
-
-    async def on_message_activity(
-        self,
-        turn_context: TurnContext
-    ):
-
-        try:
-
-            user_message = turn_context.activity.text
-
-            print("========== BOT MESSAGE ==========")
-            print(user_message)
-            print("=================================")
-
-            response = invoke_workflow(user_message)
-
-            await turn_context.send_activity(
-                response or "No response."
-            )
-
-        except Exception:
-
-            print(traceback.format_exc())
-
-            await turn_context.send_activity(
-                "An error occurred."
-            )
-
-
-bot = FoundryBot()
-
-
-@app.post("/api/messages")
-async def messages(request: Request):
-
-    body = await request.json()
-
-    print("========== BOT ACTIVITY ==========")
-    print(body)
-    print("==================================")
-
-    activity = Activity().deserialize(body)
-
-    auth_header = request.headers.get(
-        "Authorization",
-        ""
-    )
-
-    response = await adapter.process_activity(
-        activity,
-        auth_header,
-        bot.on_turn
-    )
-
-    if response:
-
-        return Response(
-            content=response.body,
-            status_code=response.status
+        user_id = body.get(
+            "user_id"
         )
 
-    return Response(status_code=201)
+        delete_conversation_id(
+            user_id
+        )
+
+        return {
+            "message":
+            f"Conversation reset for {user_id}"
+        }
+
+    except Exception as ex:
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(ex)
+            }
+        )
