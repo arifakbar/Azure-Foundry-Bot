@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 
 from fastapi import (
     FastAPI,
-    Request
+    Request,
+    Response
 )
 
 from fastapi.responses import (
@@ -18,6 +19,17 @@ from azure.identity import (
 
 from azure.ai.projects import (
     AIProjectClient
+)
+
+from botbuilder.core import (
+    BotFrameworkAdapter,
+    BotFrameworkAdapterSettings,
+    ActivityHandler,
+    TurnContext
+)
+
+from botbuilder.schema import (
+    Activity
 )
 
 from conversation_store import (
@@ -37,15 +49,40 @@ WORKFLOW_NAME = os.getenv(
     "WORKFLOW_NAME"
 )
 
+MICROSOFT_APP_ID = os.getenv(
+    "MicrosoftAppId",
+    ""
+)
+
+MICROSOFT_APP_PASSWORD = os.getenv(
+    "MicrosoftAppPassword",
+    ""
+)
+
 app = FastAPI()
 
 initialize_table()
+
+# --------------------------------------------------
+# BOT FRAMEWORK
+# --------------------------------------------------
+
+settings = BotFrameworkAdapterSettings(
+    app_id=MICROSOFT_APP_ID,
+    app_password=MICROSOFT_APP_PASSWORD
+)
+
+adapter = BotFrameworkAdapter(settings)
+
+# --------------------------------------------------
+# FOUNDRY
+# --------------------------------------------------
 
 
 def invoke_workflow(
     user_id: str,
     user_message: str
-):
+) -> str:
 
     project_client = AIProjectClient(
         endpoint=FOUNDRY_ENDPOINT,
@@ -115,8 +152,84 @@ def invoke_workflow(
             ):
                 final_response = event.text
 
+        print("========== RESPONSE ==========")
+        print(final_response)
+        print("==============================")
+
         return final_response
 
+
+# --------------------------------------------------
+# BOT
+# --------------------------------------------------
+
+class FoundryBot(ActivityHandler):
+
+    async def on_message_activity(
+        self,
+        turn_context: TurnContext
+    ):
+
+        try:
+
+            user_message = (
+                turn_context.activity.text
+            )
+
+            user_id = (
+                turn_context.activity.from_property.id
+            )
+
+            print("========== USER ==========")
+            print(user_id)
+
+            print("========== MESSAGE ==========")
+            print(user_message)
+
+            # response = invoke_workflow(
+            #     user_id,
+            #     user_message
+            # )
+
+            response = "Hello from bot"
+
+            await turn_context.send_activity(
+                response
+            )
+
+        except Exception:
+
+            print(
+                traceback.format_exc()
+            )
+
+            await turn_context.send_activity(
+                "An error occurred."
+            )
+
+    async def on_members_added_activity(
+        self,
+        members_added,
+        turn_context: TurnContext
+    ):
+
+        for member in members_added:
+
+            if (
+                member.id
+                != turn_context.activity.recipient.id
+            ):
+
+                await turn_context.send_activity(
+                    "Hello from Foundry Bot."
+                )
+
+
+bot = FoundryBot()
+
+# --------------------------------------------------
+# HEALTH
+# --------------------------------------------------
 
 @app.get("/health")
 async def health():
@@ -126,9 +239,14 @@ async def health():
         "workflow": WORKFLOW_NAME
     }
 
+# --------------------------------------------------
+# TEST API
+# --------------------------------------------------
 
 @app.post("/api/test")
-async def test(request: Request):
+async def test(
+    request: Request
+):
 
     try:
 
@@ -155,10 +273,6 @@ async def test(request: Request):
 
     except Exception as ex:
 
-        print(
-            traceback.format_exc()
-        )
-
         return JSONResponse(
             status_code=500,
             content={
@@ -166,9 +280,14 @@ async def test(request: Request):
             }
         )
 
+# --------------------------------------------------
+# RESET
+# --------------------------------------------------
 
 @app.post("/api/reset")
-async def reset(request: Request):
+async def reset(
+    request: Request
+):
 
     try:
 
@@ -195,15 +314,35 @@ async def reset(request: Request):
                 "error": str(ex)
             }
         )
-    
+
+# --------------------------------------------------
+# BOT FRAMEWORK ENDPOINT
+# --------------------------------------------------
+
 @app.post("/api/messages")
-async def messages(request: Request):
+async def messages(
+    request: Request
+):
 
     body = await request.json()
 
     print(body)
 
-    return {
-        "type": "message",
-        "text": "Hello from bot"
-    }
+    activity = Activity().deserialize(
+        body
+    )
+
+    auth_header = request.headers.get(
+        "Authorization",
+        ""
+    )
+
+    await adapter.process_activity(
+        activity,
+        auth_header,
+        bot.on_turn
+    )
+
+    return Response(
+        status_code=200
+    )
