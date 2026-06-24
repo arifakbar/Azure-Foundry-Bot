@@ -12,32 +12,20 @@ class WorkflowClient:
 
         self.workflow_name = "test"
 
-        credential = DefaultAzureCredential()
-
         self.project_client = AIProjectClient(
             endpoint=self.endpoint,
-            credential=credential
+            credential=DefaultAzureCredential()
         )
 
         self.openai_client = (
             self.project_client.get_openai_client()
         )
 
-        print("=" * 80)
-        print("WORKFLOW CLIENT INITIALIZED")
-        print(f"WORKFLOW: {self.workflow_name}")
-        print("=" * 80)
-
     def create_conversation(self):
 
         conversation = (
             self.openai_client.conversations.create()
         )
-
-        print("=" * 80)
-        print("NEW CONVERSATION CREATED")
-        print(f"CONVERSATION ID: {conversation.id}")
-        print("=" * 80)
 
         return conversation.id
 
@@ -49,8 +37,8 @@ class WorkflowClient:
 
         print("=" * 80)
         print("SEND MESSAGE")
-        print(f"CONVERSATION: {conversation_id}")
-        print(f"USER MESSAGE: {user_message}")
+        print("CONVERSATION:", conversation_id)
+        print("USER MESSAGE:", user_message)
         print("=" * 80)
 
         return self.openai_client.responses.create(
@@ -72,11 +60,6 @@ class WorkflowClient:
         self,
         conversation_id
     ):
-
-        print("=" * 80)
-        print("DELETE CONVERSATION")
-        print(f"CONVERSATION: {conversation_id}")
-        print("=" * 80)
 
         self.openai_client.conversations.delete(
             conversation_id=conversation_id

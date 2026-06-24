@@ -6,6 +6,48 @@ from workflow_client import WorkflowClient
 workflow = WorkflowClient()
 
 
+ACTION_STATUS = {
+
+    # Router
+    "node-1781245541040":
+        "🧠 Understanding request...",
+
+    # Search
+    "node-1781500525410":
+        "🔍 Searching resources...",
+
+    # Metadata
+    "node-1781500809326":
+        "📋 Fetching resource metadata...",
+
+    # KQL
+    "node-1781500766941":
+        "📊 Executing KQL query...",
+
+    # Generic Action
+    "node-1781501456526":
+        "⚡ Executing action...",
+
+    # VM Snapshot
+    "node-1781501643305":
+        "📸 Creating snapshot...",
+
+    # Email
+    "node-1781501539073":
+        "📧 Sending email...",
+
+    # Formatter
+    "node-1781501473149":
+        "📝 Formatting response...",
+
+    "node-1781501571540":
+        "📝 Formatting response...",
+
+    "node-1781501652513":
+        "📝 Formatting response..."
+}
+
+
 @cl.on_chat_start
 async def start():
 
@@ -21,19 +63,15 @@ async def start():
         )
 
         print("=" * 80)
-        print("CHAT START")
-        print(f"SESSION CONVERSATION: {conversation_id}")
+        print("NEW CHAT SESSION")
+        print("CONVERSATION:", conversation_id)
         print("=" * 80)
 
         await cl.Message(
-            content=f"""
+            content="""
 # Azure Foundry Workflow UI
 
 ✅ Connected successfully
-
-Conversation ID:
-
-{conversation_id}
 """
         ).send()
 
@@ -55,25 +93,21 @@ async def main(message: cl.Message):
         "conversation_id"
     )
 
-    print("=" * 80)
-    print("NEW USER MESSAGE")
-    print(f"SESSION CONVERSATION: {conversation_id}")
-    print(f"USER INPUT: {message.content}")
-    print("=" * 80)
-
     if not conversation_id:
 
         await cl.Message(
-            content="""
-❌ Conversation not initialized.
-
-Please refresh the page.
-"""
+            content="Conversation not initialized."
         ).send()
 
         return
 
     try:
+
+        print("=" * 80)
+        print("NEW USER MESSAGE")
+        print("SESSION CONVERSATION:", conversation_id)
+        print("USER INPUT:", message.content)
+        print("=" * 80)
 
         status_msg = cl.Message(
             content="🚀 Starting workflow..."
@@ -81,13 +115,20 @@ Please refresh the page.
 
         await status_msg.send()
 
+        response_msg = cl.Message(
+            content=""
+        )
+
+        await response_msg.send()
+
         stream = await asyncio.to_thread(
             workflow.send_message,
             conversation_id,
             message.content
         )
 
-        final_response = ""
+        streamed_text = ""
+        final_message_text = ""
 
         for event in stream:
 
@@ -102,36 +143,35 @@ Please refresh the page.
             )
 
             #
-            # Response created
+            # RESPONSE CREATED
             #
             if event_type == "response.created":
 
-                response = getattr(
-                    event,
-                    "response",
-                    None
+                print("=" * 80)
+                print("RESPONSE CREATED")
+
+                print(
+                    "RESPONSE ID:",
+                    getattr(
+                        event.response,
+                        "id",
+                        ""
+                    )
                 )
 
-                if response:
-
-                    print("=" * 80)
-                    print("RESPONSE CREATED")
-                    print(
-                        f"RESPONSE ID: {response.id}"
+                print(
+                    "FOUNDRY CONVERSATION:",
+                    getattr(
+                        event.response,
+                        "conversation",
+                        ""
                     )
+                )
 
-                    try:
-                        print(
-                            f"FOUNDRY CONVERSATION: "
-                            f"{response.conversation.id}"
-                        )
-                    except Exception:
-                        pass
-
-                    print("=" * 80)
+                print("=" * 80)
 
             #
-            # Workflow actions
+            # WORKFLOW ACTIONS
             #
             elif (
                 event_type ==
@@ -162,13 +202,15 @@ Please refresh the page.
                     print("WORKFLOW ACTION")
                     print("=" * 80)
 
+                    action_id = getattr(
+                        item,
+                        "action_id",
+                        ""
+                    )
+
                     print(
                         "ACTION ID:",
-                        getattr(
-                            item,
-                            "action_id",
-                            ""
-                        )
+                        action_id
                     )
 
                     print(
@@ -216,36 +258,19 @@ Please refresh the page.
                         )
                     )
 
-                    kind = getattr(
-                        item,
-                        "kind",
-                        ""
-                    )
-
                     if (
-                        kind ==
-                        "InvokeAzureAgent"
+                        action_id
+                        in ACTION_STATUS
                     ):
 
                         status_msg.content = (
-                            "🤖 Running workflow..."
-                        )
-
-                        await status_msg.update()
-
-                    elif (
-                        kind ==
-                        "SendActivity"
-                    ):
-
-                        status_msg.content = (
-                            "💬 Preparing response..."
+                            ACTION_STATUS[action_id]
                         )
 
                         await status_msg.update()
 
             #
-            # Stream text
+            # STREAM TOKENS
             #
             elif (
                 event_type ==
@@ -260,14 +285,27 @@ Please refresh the page.
 
                 if delta:
 
-                    print("\nDELTA RECEIVED")
-                    print(delta)
-                    print("-" * 40)
+                    print()
+                    print(
+                        "DELTA RECEIVED"
+                    )
 
-                    final_response += delta
+                    print(
+                        delta
+                    )
+
+                    print(
+                        "-" * 40
+                    )
+
+                    streamed_text += delta
+
+                    await response_msg.stream_token(
+                        delta
+                    )
 
             #
-            # Message object
+            # FINAL MESSAGE
             #
             elif (
                 event_type ==
@@ -289,10 +327,15 @@ Please refresh the page.
                     ""
                 )
 
-                if item_type == "message":
+                if (
+                    item_type ==
+                    "message"
+                ):
 
                     print("=" * 80)
-                    print("MESSAGE ITEM FOUND")
+                    print(
+                        "MESSAGE ITEM FOUND"
+                    )
                     print("=" * 80)
 
                     content = getattr(
@@ -306,46 +349,80 @@ Please refresh the page.
                         text = getattr(
                             part,
                             "text",
-                            ""
+                            None
                         )
 
-                        if (
-                            text and
-                            text not in final_response
-                        ):
-                            final_response += text
+                        if text:
 
-        print("=" * 80)
-        print("FINAL RESPONSE")
-        print(final_response)
-        print("=" * 80)
+                            final_message_text += text
 
+            #
+            # COMPLETED
+            #
+            elif (
+                event_type ==
+                "response.completed"
+            ):
+
+                print("=" * 80)
+
+                print(
+                    "RESPONSE COMPLETED"
+                )
+
+                print("=" * 80)
+
+        #
+        # FINISH STATUS
+        #
         status_msg.content = (
             "✅ Completed"
         )
 
         await status_msg.update()
 
-        if final_response.strip():
+        #
+        # FALLBACK LOGIC
+        #
+        if (
+            not streamed_text.strip()
+            and final_message_text.strip()
+        ):
 
-            await cl.Message(
-                content=final_response
-            ).send()
+            response_msg.content = (
+                final_message_text
+            )
 
-        else:
+            await response_msg.update()
 
-            await cl.Message(
-                content="""
-⚠️ No response returned.
+        elif (
+            not streamed_text.strip()
+            and not final_message_text.strip()
+        ):
 
-Check App Service logs for workflow events.
-"""
-            ).send()
+            response_msg.content = (
+                "⚠️ No response returned."
+            )
+
+            await response_msg.update()
+
+        print("=" * 80)
+
+        print(
+            "FINAL RESPONSE"
+        )
+
+        print(
+            streamed_text
+            or final_message_text
+        )
+
+        print("=" * 80)
 
     except Exception as e:
 
         print("=" * 80)
-        print("WORKFLOW ERROR")
+        print("ERROR")
         print(str(e))
         print("=" * 80)
 
