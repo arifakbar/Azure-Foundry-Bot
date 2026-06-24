@@ -20,11 +20,20 @@ async def start():
             conversation_id
         )
 
+        print("=" * 80)
+        print("CHAT START")
+        print(f"SESSION CONVERSATION: {conversation_id}")
+        print("=" * 80)
+
         await cl.Message(
-            content="""
+            content=f"""
 # Azure Foundry Workflow UI
 
 ✅ Connected successfully
+
+Conversation ID:
+
+{conversation_id}
 """
         ).send()
 
@@ -46,10 +55,20 @@ async def main(message: cl.Message):
         "conversation_id"
     )
 
+    print("=" * 80)
+    print("NEW USER MESSAGE")
+    print(f"SESSION CONVERSATION: {conversation_id}")
+    print(f"USER INPUT: {message.content}")
+    print("=" * 80)
+
     if not conversation_id:
 
         await cl.Message(
-            content="Conversation not initialized."
+            content="""
+❌ Conversation not initialized.
+
+Please refresh the page.
+"""
         ).send()
 
         return
@@ -83,9 +102,38 @@ async def main(message: cl.Message):
             )
 
             #
-            # Workflow Actions
+            # Response created
             #
-            if (
+            if event_type == "response.created":
+
+                response = getattr(
+                    event,
+                    "response",
+                    None
+                )
+
+                if response:
+
+                    print("=" * 80)
+                    print("RESPONSE CREATED")
+                    print(
+                        f"RESPONSE ID: {response.id}"
+                    )
+
+                    try:
+                        print(
+                            f"FOUNDRY CONVERSATION: "
+                            f"{response.conversation.id}"
+                        )
+                    except Exception:
+                        pass
+
+                    print("=" * 80)
+
+            #
+            # Workflow actions
+            #
+            elif (
                 event_type ==
                 "response.output_item.added"
             ):
@@ -105,9 +153,6 @@ async def main(message: cl.Message):
                     ""
                 )
 
-                #
-                # Workflow action
-                #
                 if (
                     item_type ==
                     "workflow_action"
@@ -177,9 +222,6 @@ async def main(message: cl.Message):
                         ""
                     )
 
-                    #
-                    # Status updates
-                    #
                     if (
                         kind ==
                         "InvokeAzureAgent"
@@ -203,7 +245,7 @@ async def main(message: cl.Message):
                         await status_msg.update()
 
             #
-            # Streaming text chunks
+            # Stream text
             #
             elif (
                 event_type ==
@@ -218,22 +260,14 @@ async def main(message: cl.Message):
 
                 if delta:
 
-                    print(
-                        "DELTA:"
-                    )
-
-                    print(
-                        delta
-                    )
-
-                    print(
-                        "-----"
-                    )
+                    print("\nDELTA RECEIVED")
+                    print(delta)
+                    print("-" * 40)
 
                     final_response += delta
 
             #
-            # Final message object
+            # Message object
             #
             elif (
                 event_type ==
@@ -255,17 +289,11 @@ async def main(message: cl.Message):
                     ""
                 )
 
-                #
-                # Capture assistant messages
-                #
-                if (
-                    item_type ==
-                    "message"
-                ):
+                if item_type == "message":
 
-                    print(
-                        "\nMESSAGE ITEM FOUND"
-                    )
+                    print("=" * 80)
+                    print("MESSAGE ITEM FOUND")
+                    print("=" * 80)
 
                     content = getattr(
                         item,
@@ -282,24 +310,22 @@ async def main(message: cl.Message):
                         )
 
                         if (
-                            text
-                            and text not in final_response
+                            text and
+                            text not in final_response
                         ):
-
                             final_response += text
 
-        #
-        # Completed
-        #
+        print("=" * 80)
+        print("FINAL RESPONSE")
+        print(final_response)
+        print("=" * 80)
+
         status_msg.content = (
             "✅ Completed"
         )
 
         await status_msg.update()
 
-        #
-        # Send final response
-        #
         if final_response.strip():
 
             await cl.Message(
@@ -309,10 +335,19 @@ async def main(message: cl.Message):
         else:
 
             await cl.Message(
-                content="No response returned."
+                content="""
+⚠️ No response returned.
+
+Check App Service logs for workflow events.
+"""
             ).send()
 
     except Exception as e:
+
+        print("=" * 80)
+        print("WORKFLOW ERROR")
+        print(str(e))
+        print("=" * 80)
 
         await cl.Message(
             content=f"""
